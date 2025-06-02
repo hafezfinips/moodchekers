@@ -1,0 +1,1 @@
+worker: python mood_tracker_bot.py
