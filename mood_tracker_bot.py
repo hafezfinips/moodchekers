@@ -1,12 +1,13 @@
 import logging
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import os
 import json
 from datetime import datetime
 import matplotlib.pyplot as plt
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# 🔐 توکن ربات (فقط برای تست پروژه فعلی، در پروژه‌های عمومی هرگز توکن رو داخل کد نذار)
-TOKEN = "6733614053:AAEtTx1WWbEXZSmqcb1M--_W2tdjcC2fsYc"
+# 🔐 دریافت توکن از متغیر محیطی
+TOKEN = os.environ["BOT_TOKEN"]
 
 # کیبورد سفارشی
 reply_keyboard = [["صبح", "ظهر", "عصر", "شب", "قبل خواب"], ["وضعیت هفته", "وضعیت ماه"]]
