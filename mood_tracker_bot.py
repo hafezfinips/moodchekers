@@ -33,9 +33,11 @@ async def reminder_task(app):
         now = datetime.now()
         for slot, hour in TIME_REMINDERS.items():
             if now.hour == hour and now.minute == 0:
-                dynamic_markup = ReplyKeyboardMarkup([[slot]], resize_keyboard=True, one_time_keyboard=True)
                 for user_id in os.listdir(DATA_FOLDER):
-                    await app.bot.send_message(chat_id=int(user_id), text=f"⌛️ وقتشه حالت رو ثبت کنی - تایم: {slot}", reply_markup=dynamic_markup)
+                    await app.bot.send_message(
+                        chat_id=int(user_id),
+                        text=f"⌛️ وقتشه حالت رو ثبت کنی - تایم: {slot}"
+                    )
         await asyncio.sleep(60)
 
 # استارت ربات
@@ -95,12 +97,13 @@ def generate_chart(user_id, title):
     dates = [item[0] for item in scores_by_day]
     scores = [item[1] for item in scores_by_day]
 
+    plt.style.use('ggplot')
     plt.figure(figsize=(10, 5))
-    plt.plot(dates, scores, marker='o', linestyle='-', color='blue', linewidth=2)
-    plt.title(title, fontsize=16)
+    plt.plot(dates, scores, marker='o', linestyle='-', color='#3b8ed0', linewidth=2)
+    plt.title(title, fontsize=16, fontweight='bold')
     plt.xlabel("Date", fontsize=12)
     plt.ylabel("Mood (1-10)", fontsize=12)
-    plt.grid(True)
+    plt.grid(True, linestyle='--', alpha=0.5)
     plt.xticks(rotation=45)
     plt.tight_layout()
     filename = f"mood_chart_{user_id}.png"
