@@ -10,139 +10,163 @@ import asyncio
 
 TOKEN = os.getenv("BOT_TOKEN")  # توکن ربات از متغیر محیطی گرفته می‌شود
 
-TIME_SLOTS = ["صبح", "ظهر", "عصر", "شب", "قبل خواب"]
-KEYBOARD = [[slot for slot in TIME_SLOTS], ["وضعیت هفته", "وضعیت ماه"]]
-MARKUP = ReplyKeyboardMarkup(KEYBOARD, one_time_keyboard=True, resize_keyboard=True)
+# کیبورد سفارشی
+reply_keyboard = [["صبح", "ظهر", "عصر", "شب", "قبل خواب"], ["وضعیت هفته", "وضعیت ماه"]]
+markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
 
-NOTIFICATION_TIMES = {
-    "صبح": "08:00",
-    "ظهر": "12:00",
-    "عصر": "17:00",
-    "شب": "20:00",
-    "قبل خواب": "23:00"
+# مسیر ذخیره داده‌ها
+DATA_FOLDER = "userdata"
+os.makedirs(DATA_FOLDER, exist_ok=True)
+
+TIME_SLOTS = ["صبح", "ظهر", "عصر", "شب", "قبل خواب"]
+TIME_REMINDERS = {
+    "صبح": 8,
+    "ظهر": 13,
+    "عصر": 17,
+    "شب": 21,
+    "قبل خواب": 23
 }
 
-DATA_DIR = "userdata"
-os.makedirs(DATA_DIR, exist_ok=True)
+# ⏱ تابع یادآوری ساعتی
+async def reminder_task(app):
+    while True:
+        now = datetime.now()
+        for hour, slot in [(v, k) for k, v in TIME_REMINDERS.items()]:
+            if now.hour == hour and now.minute == 0:
+                for user_id in os.listdir(DATA_FOLDER):
+                    await app.bot.send_message(chat_id=int(user_id), text=f"⌛️ وقتشه حالت رو ثبت کنی - تایم: {slot}")
+        await asyncio.sleep(60)
 
+# استارت ربات
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! حالت چطوره؟ از منوی زیر بازه زمانی رو انتخاب کن و نمره بده 😊", reply_markup=MARKUP)
+    user_id = str(update.effective_user.id)
+    user_file = os.path.join(DATA_FOLDER, user_id + ".json")
 
-def get_user_file(user_id):
-    return os.path.join(DATA_DIR, f"{user_id}.json")
+    if not os.path.exists(user_file):
+        with open(user_file, "w", encoding="utf-8") as f:
+            json.dump({"joined": datetime.now().isoformat(), "moods": {}}, f)
 
-def load_user_data(user_id):
-    path = get_user_file(user_id)
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {"scores": {}, "first_date": datetime.now().strftime("%Y-%m-%d"), "last_slot": None}
+    await update.message.reply_text(
+        "سلام! لطفاً عددی بین 1 تا 10 برای حال امروزت انتخاب کن.", reply_markup=markup
+    )
 
-def save_user_data(user_id, data):
-    with open(get_user_file(user_id), "w", encoding="utf-8") as f:
+# ذخیره مود کاربر
+def save_mood(user_id, time_slot, score):
+    file_path = os.path.join(DATA_FOLDER, str(user_id) + ".json")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if today not in data["moods"]:
+        data["moods"][today] = {}
+
+    data["moods"][today][time_slot] = score
+
+    with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def generate_chart(user_id, period):
-    data = load_user_data(user_id)
-    scores = data["scores"]
-    today = datetime.now()
-    if period == "week":
-        start_date = today - timedelta(days=6)
-    else:
-        start_date = today - timedelta(days=29)
+# بررسی کامل بودن هفته یا ماه
+def check_enough_days(user_id, days_required):
+    file_path = os.path.join(DATA_FOLDER, str(user_id) + ".json")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-    dates = []
-    values = []
-    for i in range((today - start_date).days + 1):
-        date_str = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
-        daily_scores = scores.get(date_str, {})
-        if daily_scores:
-            avg = sum(daily_scores.values()) / len(daily_scores)
-        else:
-            avg = None
-        dates.append(date_str)
-        values.append(avg)
+    mood_dates = list(data["moods"].keys())
+    return len(mood_dates) >= days_required, days_required - len(mood_dates)
 
-    if all(v is None for v in values):
+# تولید نمودار
+def generate_chart(user_id, title):
+    file_path = os.path.join(DATA_FOLDER, str(user_id) + ".json")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    moods = data["moods"]
+    scores_by_day = []
+
+    for date in sorted(moods.keys())[-14:]:
+        entries = moods[date].values()
+        avg = sum(int(s) for s in entries) / len(entries)
+        scores_by_day.append((date, avg))
+
+    if not scores_by_day:
         return None
 
+    dates = [item[0] for item in scores_by_day]
+    scores = [item[1] for item in scores_by_day]
+
     plt.figure(figsize=(10, 5))
-    plt.plot(dates, [v if v is not None else 0 for v in values], marker='o', linestyle='-', color='royalblue')
-    plt.fill_between(dates, [v if v is not None else 0 for v in values], color='skyblue', alpha=0.4)
+    plt.plot(dates, scores, marker='o', linestyle='-', color='blue', linewidth=2)
+    plt.title(title, fontsize=16)
+    plt.xlabel("Date", fontsize=12)
+    plt.ylabel("Mood (1-10)", fontsize=12)
+    plt.grid(True)
     plt.xticks(rotation=45)
-    plt.ylim(0, 10)
-    plt.title(f"Mood Trend ({'Week' if period == 'week' else 'Month'})")
     plt.tight_layout()
-    filename = f"{DATA_DIR}/chart_{user_id}.png"
+    filename = f"mood_chart_{user_id}.png"
     plt.savefig(filename)
     plt.close()
     return filename
 
+# هندل پیام‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    user_id = update.effective_user.id
-    data = load_user_data(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
+    user_id = str(update.effective_user.id)
+    now_slot = get_current_slot()
 
     if text in ["وضعیت هفته", "وضعیت ماه"]:
-        first_date = datetime.strptime(data["first_date"], "%Y-%m-%d")
-        days_passed = (datetime.now() - first_date).days
-        required_days = 6 if text == "وضعیت هفته" else 29
-
-        if days_passed < required_days:
-            await update.message.reply_text(f"📊 برای گزارش {text} باید حداقل {required_days + 1} روز از شروع ثبت گذشته باشه. هنوز {required_days - days_passed + 1} روز دیگه مونده.")
+        required = 7 if "هفته" in text else 30
+        enough, remaining = check_enough_days(user_id, required)
+        if not enough:
+            await update.message.reply_text(f"📊 برای دریافت گزارش باید {required} روز کامل ثبت داشته باشید. {remaining} روز دیگر باقی مانده.")
             return
-
-        period = "week" if text == "وضعیت هفته" else "month"
-        path = generate_chart(user_id, period)
-        if path:
-            await update.message.reply_photo(photo=open(path, "rb"))
+        chart = generate_chart(user_id, text)
+        if chart:
+            await update.message.reply_photo(photo=open(chart, "rb"))
+    elif text.isdigit():
+        pending_slot = get_pending_slot(user_id)
+        if pending_slot and now_slot != pending_slot:
+            await update.message.reply_text(f"❗️اول باید مود مربوط به '{pending_slot}' رو ثبت کنی.")
+            return
+        if now_slot:
+            save_mood(user_id, now_slot, int(text))
+            await update.message.reply_text("✅ ثبت شد! منتظر نوبت بعدی باش.")
         else:
-            await update.message.reply_text("داده‌ای برای نمایش وجود نداره.")
-        return
-
-    if text in TIME_SLOTS:
-        data["last_slot"] = text
-        save_user_data(user_id, data)
-        await update.message.reply_text(f"الان نمره‌ات برای زمان {text} رو بفرست (بین 1 تا 10)")
-        return
-
-    if text.isdigit() and data.get("last_slot"):
-        score = int(text)
-        if 1 <= score <= 10:
-            scores = data.setdefault("scores", {}).setdefault(today, {})
-            if data["last_slot"] in scores:
-                await update.message.reply_text("برای این بازه قبلاً ثبت کردی.")
-                return
-            scores[data["last_slot"]] = score
-            data["last_slot"] = None
-            save_user_data(user_id, data)
-            await update.message.reply_text("✅ ثبت شد! ممنون 🌟")
-        else:
-            await update.message.reply_text("عدد باید بین 1 تا 10 باشه.")
+            await update.message.reply_text("⏰ الان زمان ثبت مود نیست. لطفاً در ساعت تعیین‌شده پاسخ بده.")
     else:
-        await update.message.reply_text("از منوی کیبورد بازه زمانی رو انتخاب کن.")
+        await update.message.reply_text("لطفاً فقط عدد بین 1 تا 10 یا گزینه‌های کیبورد رو ارسال کن.")
 
-async def reminder_task(app):
-    while True:
-        now = datetime.now().strftime("%H:%M")
-        for user_file in os.listdir(DATA_DIR):
-            if user_file.endswith(".json"):
-                user_id = int(user_file.replace(".json", ""))
-                data = load_user_data(user_id)
-                today = datetime.now().strftime("%Y-%m-%d")
-                for slot, slot_time in NOTIFICATION_TIMES.items():
-                    if now == slot_time:
-                        if today not in data["scores"] or slot not in data["scores"][today]:
-                            await app.bot.send_message(chat_id=user_id, text=f"⏰ یادت نره نمره زمان '{slot}' رو ثبت کنی!")
-        await asyncio.sleep(60)  # هر 1 دقیقه چک کنه
+# بررسی تایم فعلی
+def get_current_slot():
+    hour = datetime.now().hour
+    for slot, slot_hour in TIME_REMINDERS.items():
+        if hour == slot_hour:
+            return slot
+    return None
 
+# بررسی اینکه آیا تایمی از قبل مونده
+def get_pending_slot(user_id):
+    file_path = os.path.join(DATA_FOLDER, str(user_id) + ".json")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if today not in data["moods"]:
+        return None
+
+    for slot in TIME_SLOTS:
+        if slot in TIME_REMINDERS:
+            if TIME_REMINDERS[slot] < datetime.now().hour and slot not in data["moods"][today]:
+                return slot
+    return None
+
+# راه‌اندازی اپلیکیشن
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_async(reminder_task(app))
-    print("ربات اجرا شد...")
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(reminder_task(app))
     app.run_polling()
