@@ -10,8 +10,8 @@ import asyncio
 
 TOKEN = os.getenv("BOT_TOKEN")  # توکن ربات از متغیر محیطی گرفته می‌شود
 
-# کیبورد سفارشی
-reply_keyboard = [["صبح", "ظهر", "عصر", "شب", "قبل خواب"], ["وضعیت هفته", "وضعیت ماه"]]
+# فقط دکمه‌های گزارش در کیبورد عمومی
+reply_keyboard = [["وضعیت هفته", "وضعیت ماه"]]
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
 
 # مسیر ذخیره داده‌ها
@@ -31,10 +31,11 @@ TIME_REMINDERS = {
 async def reminder_task(app):
     while True:
         now = datetime.now()
-        for hour, slot in [(v, k) for k, v in TIME_REMINDERS.items()]:
+        for slot, hour in TIME_REMINDERS.items():
             if now.hour == hour and now.minute == 0:
+                dynamic_markup = ReplyKeyboardMarkup([[slot]], resize_keyboard=True, one_time_keyboard=True)
                 for user_id in os.listdir(DATA_FOLDER):
-                    await app.bot.send_message(chat_id=int(user_id), text=f"⌛️ وقتشه حالت رو ثبت کنی - تایم: {slot}")
+                    await app.bot.send_message(chat_id=int(user_id), text=f"⌛️ وقتشه حالت رو ثبت کنی - تایم: {slot}", reply_markup=dynamic_markup)
         await asyncio.sleep(60)
 
 # استارت ربات
@@ -47,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             json.dump({"joined": datetime.now().isoformat(), "moods": {}}, f)
 
     await update.message.reply_text(
-        "سلام! لطفاً عددی بین 1 تا 10 برای حال امروزت انتخاب کن.", reply_markup=markup
+        "سلام! لطفاً منتظر نوتیف در ساعت‌های مشخص باش و در آن زمان نمره‌ات را وارد کن.", reply_markup=markup
     )
 
 # ذخیره مود کاربر
