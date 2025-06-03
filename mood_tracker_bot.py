@@ -1,12 +1,14 @@
 import logging
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler,
-                          ContextTypes, filters, CallbackContext)
+import os
 import json
+import asyncio
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-import os
-import asyncio
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler,
+                          ContextTypes, filters)
 
 TOKEN = os.getenv("BOT_TOKEN")  # توکن ربات از متغیر محیطی گرفته می‌شود
 
@@ -111,6 +113,29 @@ def generate_chart(user_id, title):
     plt.close()
     return filename
 
+# بررسی تایم فعلی
+def get_current_slot():
+    hour = datetime.now().hour
+    for slot, slot_hour in TIME_REMINDERS.items():
+        if hour == slot_hour:
+            return slot
+    return None
+
+# بررسی اینکه آیا تایمی از قبل مونده
+def get_pending_slot(user_id):
+    file_path = os.path.join(DATA_FOLDER, str(user_id) + ".json")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if today not in data["moods"]:
+        return None
+
+    for slot in TIME_SLOTS:
+        if TIME_REMINDERS[slot] < datetime.now().hour and slot not in data["moods"][today]:
+            return slot
+    return None
+
 # هندل پیام‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -139,29 +164,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("لطفاً فقط عدد بین 1 تا 10 یا گزینه‌های کیبورد رو ارسال کن.")
 
-# بررسی تایم فعلی
-def get_current_slot():
-    hour = datetime.now().hour
-    for slot, slot_hour in TIME_REMINDERS.items():
-        if hour == slot_hour:
-            return slot
-    return None
+# سرور ساختگی برای دور زدن محدودیت Render
 
-# بررسی اینکه آیا تایمی از قبل مونده
-def get_pending_slot(user_id):
-    file_path = os.path.join(DATA_FOLDER, str(user_id) + ".json")
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+def run_dummy_server():
+    class DummyHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot is running.")
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    if today not in data["moods"]:
-        return None
+    server = HTTPServer(("0.0.0.0", 10000), DummyHandler)
+    server.serve_forever()
 
-    for slot in TIME_SLOTS:
-        if slot in TIME_REMINDERS:
-            if TIME_REMINDERS[slot] < datetime.now().hour and slot not in data["moods"][today]:
-                return slot
-    return None
+threading.Thread(target=run_dummy_server).start()
 
 # راه‌اندازی اپلیکیشن
 if __name__ == "__main__":
