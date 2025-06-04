@@ -3,6 +3,7 @@ import os
 import json
 import asyncio
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -11,6 +12,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters
 )
+from telegram.error import TimedOut, NetworkError
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASS", "admin1234")
@@ -36,6 +38,7 @@ TYPING_PRIVATE_MESSAGE = 7
 
 ADMIN_PANEL = set()
 user_states = {}
+broadcast_targets = []
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -52,16 +55,6 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[update.effective_user.id] = WAITING_FOR_PASSWORD
         await update.message.reply_text("🔐 لطفاً رمز پنل ادمین را وارد کنید:")
 
-async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_states.get(user_id) == WAITING_FOR_PASSWORD:
-        if update.message.text == ADMIN_PASSWORD:
-            await context.bot.send_message(ADMIN_MAIN_ID, f"📅 درخواست دسترسی از {user_id} دریافت شد.\n/allow {user_id}")
-            await update.message.reply_text("⏳ درخواست شما برای ادمین ارسال شد.")
-        else:
-            await update.message.reply_text("❌ رمز اشتباه است.")
-        user_states.pop(user_id)
-
 async def allow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_MAIN_ID:
         return
@@ -70,7 +63,7 @@ async def allow(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADMIN_PANEL.add(uid)
         await context.bot.send_message(uid, "✅ دسترسی شما تأیید شد.")
     except:
-        await update.message.reply_text("❗⃣ دستور نادرست. استفاده صحیح:\n/allow user_id")
+        await update.message.reply_text("❗️ دستور نادرست. استفاده صحیح:\n/allow user_id")
 
 async def show_admin_menu(update: Update):
     keyboard = [["📄 لیست کاربران", "📢 پیام همگانی"], ["🧾 خلاصه کاربر", "🗂 خروجی کاربر"], ["📬 پیام به کاربر", "❌ خروج از پنل"]]
@@ -84,7 +77,12 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
 
     if user_states.get(user_id) == WAITING_FOR_PASSWORD:
-        await handle_password(update, context)
+        if text == ADMIN_PASSWORD:
+            await context.bot.send_message(ADMIN_MAIN_ID, f"📅 درخواست دسترسی از {user_id} دریافت شد.\n/allow {user_id}")
+            await update.message.reply_text("⏳ درخواست شما برای ادمین ارسال شد.")
+        else:
+            await update.message.reply_text("❌ رمز اشتباه است.")
+        user_states.pop(user_id)
         return
 
     if user_id in ADMIN_PANEL:
@@ -115,14 +113,15 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif state == TYPING_BROADCAST:
             user_states.pop(user_id)
-            success = 0
-            fail = 0
-            for uid in os.listdir(DATA_FOLDER):
-                try:
-                    await context.bot.send_message(int(uid), f"📢 پیام از ادمین:\n{text}")
-                    success += 1
-                except:
-                    fail += 1
+            success, fail = 0, 0
+            for filename in os.listdir(DATA_FOLDER):
+                if filename.endswith(".json") and filename.replace(".json", "").isdigit():
+                    uid = int(filename.replace(".json", ""))
+                    try:
+                        await context.bot.send_message(uid, f"📢 پیام از ادمین:\n{text}")
+                        success += 1
+                    except:
+                        fail += 1
             await update.message.reply_text(f"✅ پیام برای {success} نفر ارسال شد.\n❌ شکست‌خورده: {fail}")
             return
         elif state == TYPING_EXPORT_ID:
@@ -213,6 +212,11 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ لطفاً فقط از گزینه‌های کیبورد استفاده کن یا حالتت رو وارد کن.")
 
+def restart_bot():
+    logging.warning("⏱ در حال ری‌استارت ربات پس از خطای Timeout...")
+    time.sleep(5)
+    os.execv(__file__, ['python'] + [__file__])
+
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -226,11 +230,17 @@ threading.Thread(target=run_dummy_server).start()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("allow", allow))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
-
-    app.run_polling()
+    while True:
+        try:
+            app = ApplicationBuilder().token(TOKEN).read_timeout(10).connect_timeout(10).build()
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("admin", admin))
+            app.add_handler(CommandHandler("allow", allow))
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
+            app.run_polling()
+        except (TimedOut, NetworkError) as e:
+            logging.error(f"❌ خطا در اتصال: {e}")
+            restart_bot()
+        except Exception as e:
+            logging.exception(f"🚨 خطای ناشناخته: {e}")
+            time.sleep(5)
