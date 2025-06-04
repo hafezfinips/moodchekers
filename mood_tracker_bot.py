@@ -1,5 +1,7 @@
 import logging
 import asyncio
+import nest_asyncio
+nest_asyncio.apply()
 import os
 import json
 import asyncio
@@ -214,18 +216,20 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ لطفاً فقط از گزینه‌های کیبورد استفاده کن یا حالتت رو وارد کن.")
 
 def restart_bot():
-    logging.warning("⏱ در حال ری‌استارت ربات پس از خطای Timeout...")
-    time.sleep(5)
-    os.execv(__file__, ['python'] + [__file__])
+    logging.warning("⏱ نیاز به ری‌استارت ربات ولی در محیط محدود هستیم، فقط sleep می‌کنیم.")
+    time.sleep(10)
 
 def run_dummy_server():
+    import socket
+    port = int(os.environ.get("PORT", 10000))  # استفاده از PORT دینامیک مخصوص Render
     class DummyHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Bot is running.")
-    server = HTTPServer(("0.0.0.0", 10000), DummyHandler)
+    server = HTTPServer(("0.0.0.0", port), DummyHandler)
     server.serve_forever()
+
 
 threading.Thread(target=run_dummy_server).start()
 
