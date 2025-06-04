@@ -40,10 +40,12 @@ TYPING_SUMMARY_ID = 5
 TYPING_PRIVATE_IDS = 6
 TYPING_PRIVATE_MESSAGE = 7
 TYPING_FILL_BACK = 8
+TYPING_EXPORT_DATA = 9
 
 ADMIN_PANEL = set()
 user_states = {}
 broadcast_targets = []
+
 
 def backup_file(src_path, dst_folder):
     if os.path.exists(src_path):
@@ -55,6 +57,7 @@ def backup_file(src_path, dst_folder):
                 dst.write(src.read())
         except Exception as e:
             logging.warning(f"❗️ خطا در بکاپ‌گیری از {src_path}: {e}")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -77,6 +80,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             json.dump(data, f)
     await update.message.reply_text("سلام! منتظر نوتیف در ساعت‌های مشخص باش و در آن زمان نمره‌ات را وارد کن.", reply_markup=markup)
 
+
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == ADMIN_MAIN_ID:
         ADMIN_PANEL.add(update.effective_user.id)
@@ -85,9 +89,11 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[update.effective_user.id] = WAITING_FOR_PASSWORD
         await update.message.reply_text("🔐 لطفاً رمز پنل ادمین را وارد کنید:")
 
+
 async def show_admin_menu(update: Update):
     keyboard = [["📄 لیست کاربران", "📢 پیام همگانی"], ["🗒 خلاصه کاربر", "🗂 خروجی کاربر"], ["🧠 ذهن کاربر", "🕒 زمان عضویت"], ["❌ خروج از پنل"], ["✉️ پیام خصوصی"]]
     await update.message.reply_text("🏧 پنل ادمین فعال شد.", reply_markup=ReplyKeyboardMarkup(keyboard + reply_keyboard, resize_keyboard=True))
+
 
 async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -107,7 +113,11 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in ADMIN_PANEL:
         state = user_states.get(user_id)
-        if text == "🕒 زمان عضویت":
+        if text == "❌ خروج از پنل":
+            ADMIN_PANEL.remove(user_id)
+            await update.message.reply_text("🚪 از پنل ادمین خارج شدید.", reply_markup=markup)
+            return
+        elif text == "🕒 زمان عضویت":
             users = os.listdir(DATA_FOLDER)
             msg = []
             for file in users:
@@ -117,6 +127,54 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     join_time = d.get("joined", "نامشخص")
                     msg.append(f"{uid}: {join_time}")
             await update.message.reply_text("\n".join(msg))
+            return
+        elif text == "📄 لیست کاربران":
+            users = os.listdir(DATA_FOLDER)
+            await update.message.reply_text("👥 تعداد کاربران ثبت‌شده: " + str(len(users)))
+            return
+        elif text == "📢 پیام همگانی":
+            user_states[user_id] = TYPING_BROADCAST
+            await update.message.reply_text("📝 پیام مورد نظر را بنویس:")
+            return
+        elif state == TYPING_BROADCAST:
+            user_states.pop(user_id)
+            success = 0
+            fail = 0
+            for filename in os.listdir(DATA_FOLDER):
+                if filename.endswith(".json"):
+                    uid = int(filename.replace(".json", ""))
+                    try:
+                        await context.bot.send_message(uid, f"📢 پیام از ادمین:\n{text}")
+                        success += 1
+                    except:
+                        fail += 1
+            await update.message.reply_text(f"✅ پیام برای {success} نفر ارسال شد.\n❌ شکست‌خورده: {fail}")
+            return
+        elif text == "✉️ پیام خصوصی":
+            user_states[user_id] = TYPING_PRIVATE_IDS
+            await update.message.reply_text("🆔 آیدی یا آیدی‌های کاربران (با ویرگول جدا کن):")
+            return
+        elif state == TYPING_PRIVATE_IDS:
+            broadcast_targets.clear()
+            broadcast_targets.extend([uid.strip() for uid in text.split(",") if uid.strip().isdigit()])
+            if not broadcast_targets:
+                await update.message.reply_text("❌ هیچ آیدی معتبری وارد نشد.")
+                user_states.pop(user_id)
+                return
+            user_states[user_id] = TYPING_PRIVATE_MESSAGE
+            await update.message.reply_text("📨 پیام مورد نظر برای ارسال به کاربران مشخص‌شده را بنویس:")
+            return
+        elif state == TYPING_PRIVATE_MESSAGE:
+            user_states.pop(user_id)
+            success = 0
+            fail = 0
+            for uid in broadcast_targets:
+                try:
+                    await context.bot.send_message(int(uid), f"✉️ پیام خصوصی از ادمین:\n{text}")
+                    success += 1
+                except:
+                    fail += 1
+            await update.message.reply_text(f"✅ پیام برای {success} نفر ارسال شد.\n❌ شکست‌خورده: {fail}")
             return
         elif text == "🧠 ذهن کاربر":
             user_states[user_id] = TYPING_EXPORT_ID
@@ -163,10 +221,12 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ لطفاً فقط از گزینه‌های کیبورد استفاده کن یا حالتت رو وارد کن.")
 
+
 def restart_bot():
     logging.warning("⏱ در حال ری‌استارت ربات پس از خطای Timeout...")
     time.sleep(5)
     sys.exit(1)
+
 
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
@@ -176,6 +236,7 @@ def run_dummy_server():
             self.wfile.write(b"Bot is running.")
     server = HTTPServer(("0.0.0.0", 10000), DummyHandler)
     server.serve_forever()
+
 
 threading.Thread(target=run_dummy_server).start()
 
