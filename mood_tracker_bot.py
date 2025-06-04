@@ -253,7 +253,15 @@ async def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     threading.Thread(target=run_dummy_server).start()
-    asyncio.run(main())
+
+    import asyncio
+    import nest_asyncio
+    nest_asyncio.apply()
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
+
 
 # if __name__ == "__main__":
 #     logging.basicConfig(level=logging.INFO)
