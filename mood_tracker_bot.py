@@ -4,6 +4,7 @@ import json
 import asyncio
 import threading
 import time
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
@@ -143,7 +144,7 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def restart_bot():
     logging.warning("⏱ در حال ری‌استارت ربات پس از خطای Timeout...")
     time.sleep(5)
-    return
+    sys.exit(1)
 
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
