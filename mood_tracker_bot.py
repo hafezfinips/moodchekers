@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
-    ContextTypes, filters, ConversationHandler
+    ContextTypes, filters
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -40,10 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not os.path.exists(os.path.join(DATA_FOLDER, f"{user_id}.json")):
         with open(os.path.join(DATA_FOLDER, f"{user_id}.json"), "w", encoding="utf-8") as f:
             json.dump({"joined": datetime.now().isoformat(), "moods": {}}, f)
-    if update.effective_user.id in ADMIN_PANEL:
-        await show_admin_menu(update)
-    else:
-        await update.message.reply_text("سلام! منتظر نوتیف در ساعت‌های مشخص باش و در آن زمان نمره‌ات را وارد کن.", reply_markup=markup)
+    await update.message.reply_text("سلام! منتظر نوتیف در ساعت‌های مشخص باش و در آن زمان نمره‌ات را وارد کن.", reply_markup=markup)
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == ADMIN_MAIN_ID:
@@ -57,7 +54,7 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_states.get(user_id) == WAITING_FOR_PASSWORD:
         if update.message.text == ADMIN_PASSWORD:
-            await context.bot.send_message(ADMIN_MAIN_ID, f"📥 درخواست دسترسی از {user_id} دریافت شد.\n/allow {user_id}")
+            await context.bot.send_message(ADMIN_MAIN_ID, f"📅 درخواست دسترسی از {user_id} دریافت شد.\n/allow {user_id}")
             await update.message.reply_text("⏳ درخواست شما برای ادمین ارسال شد.")
         else:
             await update.message.reply_text("❌ رمز اشتباه است.")
@@ -71,77 +68,92 @@ async def allow(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADMIN_PANEL.add(uid)
         await context.bot.send_message(uid, "✅ دسترسی شما تأیید شد.")
     except:
-        await update.message.reply_text("❗️ دستور نادرست. استفاده صحیح:\n/allow user_id")
+        await update.message.reply_text("❗⃣ دستور نادرست. استفاده صحیح:\n/allow user_id")
 
 async def show_admin_menu(update: Update):
     keyboard = [["📄 لیست کاربران", "📢 پیام همگانی"], ["🧾 خلاصه کاربر", "🗂 خروجی کاربر"], ["❌ خروج از پنل"]]
     await update.message.reply_text("🎛 پنل ادمین فعال شد.", reply_markup=ReplyKeyboardMarkup(keyboard + reply_keyboard, resize_keyboard=True))
 
-async def handle_admin_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    text = update.message.text
-    if user_id not in ADMIN_PANEL:
-        return
-    if text == "📄 لیست کاربران":
-        users = os.listdir(DATA_FOLDER)
-        await update.message.reply_text(f"👥 تعداد کاربران: {len(users)}\n" + "\n".join(users))
-    elif text == "📢 پیام همگانی":
-        user_states[user_id] = TYPING_BROADCAST
-        await update.message.reply_text("📨 پیام خود را وارد کنید تا برای همه کاربران ارسال شود.")
-    elif text == "🗂 خروجی کاربر":
-        user_states[user_id] = TYPING_EXPORT_ID
-        await update.message.reply_text("🔍 لطفاً آیدی کاربر موردنظر را وارد کنید:")
-    elif text == "🧾 خلاصه کاربر":
-        user_states[user_id] = TYPING_SUMMARY_ID
-        await update.message.reply_text("🔎 لطفاً آیدی کاربر را برای خلاصه آماری وارد کنید:")
-    elif text == "❌ خروج از پنل":
-        ADMIN_PANEL.remove(user_id)
-        await update.message.reply_text("🛑 از حالت ادمین خارج شدید.", reply_markup=markup)
-
-async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    state = user_states.get(user_id)
-    text = update.message.text
-    if state == TYPING_BROADCAST:
-        del user_states[user_id]
-        for uid in os.listdir(DATA_FOLDER):
-            await context.bot.send_message(int(uid), f"📢 پیام از ادمین:\n{text}")
-        await update.message.reply_text("✅ پیام برای همه ارسال شد.")
-    elif state == TYPING_EXPORT_ID:
-        del user_states[user_id]
-        file_path = os.path.join(DATA_FOLDER, f"{text}.json")
-        if not os.path.exists(file_path):
-            await update.message.reply_text("❌ کاربری با این آیدی یافت نشد.")
-            return
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        messages = []
-        for date, times in data.get("moods", {}).items():
-            msg = f"📅 {date}: " + ", ".join([f"{k}={v}" for k, v in times.items()])
-            messages.append(msg)
-        await update.message.reply_text("\n".join(messages) or "❗️ دیتایی ثبت نشده.")
-    elif state == TYPING_SUMMARY_ID:
-        del user_states[user_id]
-        file_path = os.path.join(DATA_FOLDER, f"{text}.json")
-        if not os.path.exists(file_path):
-            await update.message.reply_text("❌ کاربری با این آیدی یافت نشد.")
-            return
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        all_scores = []
-        for day in data["moods"].values():
-            all_scores.extend([int(s) for s in day.values()])
-        avg = sum(all_scores)/len(all_scores) if all_scores else 0
-        await update.message.reply_text(f"📊 میانگین نمره: {avg:.2f}\nروزهای فعال: {len(data['moods'])}\nآخرین روز: {max(data['moods']) if data['moods'] else '---'}")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
+    user_id_str = str(user_id)
+    username = update.effective_user.first_name or "کاربر"
     text = update.message.text
     now = datetime.now()
-    username = update.effective_user.first_name or "کاربر"
+
+    if user_states.get(user_id) == WAITING_FOR_PASSWORD:
+        await handle_password(update, context)
+        return
+
+    if user_id in ADMIN_PANEL:
+        state = user_states.get(user_id)
+        if text == "📄 لیست کاربران":
+            users = os.listdir(DATA_FOLDER)
+            await update.message.reply_text(f"👥 تعداد کاربران: {len(users)}\n" + "\n".join(users))
+            return
+        elif text == "📢 پیام همگانی":
+            user_states[user_id] = TYPING_BROADCAST
+            await update.message.reply_text("📨 پیام خود را وارد کنید تا برای همه کاربران ارسال شود.")
+            return
+        elif text == "🗂 خروجی کاربر":
+            user_states[user_id] = TYPING_EXPORT_ID
+            await update.message.reply_text("🔍 لطفاً آیدی کاربر موردنظر را وارد کنید:")
+            return
+        elif text == "🧾 خلاصه کاربر":
+            user_states[user_id] = TYPING_SUMMARY_ID
+            await update.message.reply_text("🔎 لطفاً آیدی کاربر را برای خلاصه آماری وارد کنید:")
+            return
+        elif text == "❌ خروج از پنل":
+            ADMIN_PANEL.remove(user_id)
+            await update.message.reply_text("🛑 از حالت ادمین خارج شدید.", reply_markup=markup)
+            return
+        elif state == TYPING_BROADCAST:
+            user_states.pop(user_id)
+            for uid in os.listdir(DATA_FOLDER):
+                await context.bot.send_message(int(uid), f"📢 پیام از ادمین:\n{text}")
+            await update.message.reply_text("✅ پیام برای همه ارسال شد.")
+            return
+        elif state == TYPING_EXPORT_ID:
+            user_states.pop(user_id)
+            file_path = os.path.join(DATA_FOLDER, f"{text}.json")
+            if not os.path.exists(file_path):
+                await update.message.reply_text("❌ کاربری با این آیدی یافت نشد.")
+                return
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            messages = [f"📅 {d}: " + ", ".join([f"{k}={v}" for k, v in t.items()]) for d, t in data.get("moods", {}).items()]
+            await update.message.reply_text("\n".join(messages) or "❗️ دیتایی ثبت نشده.")
+            return
+        elif state == TYPING_SUMMARY_ID:
+            user_states.pop(user_id)
+            file_path = os.path.join(DATA_FOLDER, f"{text}.json")
+            if not os.path.exists(file_path):
+                await update.message.reply_text("❌ کاربری با این آیدی یافت نشد.")
+                return
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            all_scores = []
+            for day in data["moods"].values():
+                all_scores.extend([int(s) for s in day.values()])
+            avg = sum(all_scores)/len(all_scores) if all_scores else 0
+            await update.message.reply_text(f"📊 میانگین نمره: {avg:.2f}\nروزهای فعال: {len(data['moods'])}\nآخرین روز: {max(data['moods']) if data['moods'] else '---'}")
+            return
+
+    if text == "🧠 خالی کردن ذهن":
+        user_states[user_id] = TYPING_THOUGHT
+        await update.message.reply_text("📝 بنویس هرچی تو ذهنت هست:")
+        return
+
+    if user_states.get(user_id) == TYPING_THOUGHT:
+        user_states.pop(user_id)
+        filepath = os.path.join(THOUGHTS_FOLDER, f"{user_id_str}.txt")
+        with open(filepath, "a", encoding="utf-8") as f:
+            f.write(f"[{now}] {text}\n")
+        await update.message.reply_text(f"خیلی خوبه {username}، خوشحالم که ذهنت رو خالی کردی 💚 هر وقت دوباره خواستی، من همینجام.")
+        return
 
     if text in ["وضعیت هفته", "وضعیت ماه"]:
-        file_path = os.path.join(DATA_FOLDER, f"{user_id}.json")
+        file_path = os.path.join(DATA_FOLDER, f"{user_id_str}.json")
         if not os.path.exists(file_path):
             await update.message.reply_text("❗️ ابتدا با /start ثبت‌نام کن.")
             return
@@ -157,9 +169,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             entries = data["moods"][date].values()
             avg = sum(int(s) for s in entries) / len(entries)
             scores_by_day.append((date, avg))
-        if not scores_by_day:
-            await update.message.reply_text("📉 دیتایی برای نمایش وجود ندارد.")
-            return
         dates = [x[0] for x in scores_by_day]
         scores = [x[1] for x in scores_by_day]
         plt.figure(figsize=(10, 5))
@@ -171,19 +180,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plt.savefig(chart_path)
         plt.close()
         await update.message.reply_photo(photo=open(chart_path, "rb"))
-        return
-
-    if text == "🧠 خالی کردن ذهن":
-        user_states[user_id] = TYPING_THOUGHT
-        await update.message.reply_text("📝 بنویس هرچی تو ذهنت هست:")
-        return
-
-    if user_states.get(user_id) == TYPING_THOUGHT:
-        user_states.pop(user_id)
-        filepath = os.path.join(THOUGHTS_FOLDER, f"{user_id}.txt")
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(f"[{now}] {text}\n")
-        await update.message.reply_text(f"خیلی خوبه {username}، خوشحالم که ذهنت رو خالی کردی 💚 هر وقت دوباره خواستی، من همینجام.")
         return
 
     await update.message.reply_text("⏳ لطفاً فقط از گزینه‌های کیبورد استفاده کن یا حالتت رو وارد کن.")
@@ -206,9 +202,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CommandHandler("allow", allow))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_commands))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
 
     app.run_polling()
