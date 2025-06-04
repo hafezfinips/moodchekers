@@ -134,8 +134,23 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         avg = sum(all_scores)/len(all_scores) if all_scores else 0
         await update.message.reply_text(f"📊 میانگین نمره: {avg:.2f}\nروزهای فعال: {len(data['moods'])}\nآخرین روز: {max(data['moods']) if data['moods'] else '---'}")
 
-# بقیه توابع از قبل در فایل هستند
-# حالا راه‌اندازی اپلیکیشن
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    text = update.message.text
+    now = datetime.now()
+    current_hour = now.hour
+
+    if text == "🧠 خالی کردن ذهن":
+        user_states[user_id] = TYPING_THOUGHT
+        await update.message.reply_text("📝 بنویس هرچی تو ذهنت هست:")
+    elif user_states.get(user_id) == TYPING_THOUGHT:
+        user_states.pop(user_id)
+        filepath = os.path.join(THOUGHTS_FOLDER, f"{user_id}.txt")
+        with open(filepath, "a", encoding="utf-8") as f:
+            f.write(f"[{now}] {text}\n")
+        await update.message.reply_text("✅ ذخیره شد. هر وقت خواستی باز هم بنویس.")
+    else:
+        await update.message.reply_text("⏳ لطفاً فقط از گزینه‌های کیبورد استفاده کن یا حالتت رو وارد کن.")
 
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
