@@ -21,8 +21,11 @@ ADMIN_MAIN_ID = 7066529596
 
 DATA_FOLDER = "userdata"
 THOUGHTS_FOLDER = "thoughts"
+BACKUP_FOLDER = "backup"
 os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(THOUGHTS_FOLDER, exist_ok=True)
+os.makedirs(os.path.join(BACKUP_FOLDER, "userdata"), exist_ok=True)
+os.makedirs(os.path.join(BACKUP_FOLDER, "thoughts"), exist_ok=True)
 
 TIME_SLOTS = ["صبح", "ظهر", "عصر", "شب", "قبل خواب"]
 TIME_REMINDERS = {"صبح": 8, "ظهر": 13, "عصر": 17, "شب": 21, "قبل خواب": 23}
@@ -42,6 +45,17 @@ ADMIN_PANEL = set()
 user_states = {}
 broadcast_targets = []
 
+def backup_file(src_path, dst_folder):
+    if os.path.exists(src_path):
+        filename = os.path.basename(src_path)
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        dst_path = os.path.join(dst_folder, f"{filename}_{timestamp}")
+        try:
+            with open(src_path, "rb") as src, open(dst_path, "wb") as dst:
+                dst.write(src.read())
+        except Exception as e:
+            logging.warning(f"❗️ خطا در بکاپ‌گیری از {src_path}: {e}")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     filepath = os.path.join(DATA_FOLDER, f"{user_id}.json")
@@ -58,6 +72,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             day = (now - timedelta(days=i)).date().isoformat()
             if day not in data["moods"]:
                 data["moods"][day] = {}
+        backup_file(filepath, os.path.join(BACKUP_FOLDER, "userdata"))
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f)
     await update.message.reply_text("سلام! منتظر نوتیف در ساعت‌های مشخص باش و در آن زمان نمره‌ات را وارد کن.", reply_markup=markup)
@@ -121,7 +136,8 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         thoughts_file = os.path.join(THOUGHTS_FOLDER, f"{user_id_str}.txt")
         if os.path.exists(thoughts_file):
             with open(thoughts_file, "r", encoding="utf-8") as f:
-                await update.message.reply_text(f.read() or "(خالی)")
+                content = f.read()
+                await update.message.reply_text(content if content.strip() else "(خالی)")
         else:
             await update.message.reply_text("❌ هیچی ننوشتی هنوز.")
         return
@@ -134,8 +150,14 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_states.get(user_id) == TYPING_THOUGHT:
         user_states.pop(user_id)
         filepath = os.path.join(THOUGHTS_FOLDER, f"{user_id_str}.txt")
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(f"[{now}] {text}\n")
+        try:
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(f"[{now}] {text}\n")
+            backup_file(filepath, os.path.join(BACKUP_FOLDER, "thoughts"))
+        except Exception as e:
+            logging.error(f"❌ خطا در ذخیره‌سازی ذهن: {e}")
+            await update.message.reply_text("⚠️ مشکلی در ذخیره‌سازی پیش اومد.")
+            return
         await update.message.reply_text(f"خیلی خوبه {username}، خوشحالم که ذهنت رو خالی کردی 💚 هر وقت دوباره خواستی، من همینجام.")
         return
 
