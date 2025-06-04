@@ -1,5 +1,4 @@
 import logging
-import asyncio
 import os
 import json
 import asyncio
@@ -15,7 +14,7 @@ from telegram.ext import (
 )
 from telegram.error import TimedOut, NetworkError
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "7742647869:AAHCKeznqRVv3N_WRWf0_sjDQmqvl7c3xOs"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASS", "admin1234")
 ADMIN_MAIN_ID = 7066529596
 
@@ -229,41 +228,19 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server).start()
 
-async def main():
-    app = ApplicationBuilder().token(TOKEN).read_timeout(10).connect_timeout(10).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("allow", allow))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
-
-    try:
-        await app.run_polling()
-    except (TimedOut, NetworkError) as e:
-        logging.error(f"❌ خطا در اتصال: {e}")
-        restart_bot()
-    except Exception as e:
-        logging.exception(f"🚨 خطای ناشناخته: {e}")
-        time.sleep(5)
-        restart_bot()
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    threading.Thread(target=run_dummy_server).start()
-    asyncio.run(main())
-
-# if __name__ == "__main__":
-#     logging.basicConfig(level=logging.INFO)
-#     while True:
-#         try:
-#             app = ApplicationBuilder().token(TOKEN).read_timeout(10).connect_timeout(10).build()
-#             app.add_handler(CommandHandler("start", start))
-#             app.add_handler(CommandHandler("admin", admin))
-#             app.add_handler(CommandHandler("allow", allow))
-#             app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
-#             app.run_polling()
-#         except (TimedOut, NetworkError) as e:
-#             logging.error(f"❌ خطا در اتصال: {e}")
-#             restart_bot()
-#         except Exception as e:
-#             logging.exception(f"🚨 خطای ناشناخته: {e}")
-#             time.sleep(5) 
+    while True:
+        try:
+            app = ApplicationBuilder().token(TOKEN).read_timeout(10).connect_timeout(10).build()
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("admin", admin))
+            app.add_handler(CommandHandler("allow", allow))
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
+            app.run_polling()
+        except (TimedOut, NetworkError) as e:
+            logging.error(f"❌ خطا در اتصال: {e}")
+            restart_bot()
+        except Exception as e:
+            logging.exception(f"🚨 خطای ناشناخته: {e}")
+            time.sleep(5)
