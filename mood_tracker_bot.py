@@ -251,16 +251,16 @@ async def main():
         restart_bot()
 
 if __name__ == "__main__":
+    import asyncio
+    import nest_asyncio
+    import threading
+
     logging.basicConfig(level=logging.INFO)
     threading.Thread(target=run_dummy_server).start()
 
-    import asyncio
-    import nest_asyncio
     nest_asyncio.apply()
-
     loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    loop.run_until_complete(main())
 
 
 # if __name__ == "__main__":
