@@ -35,6 +35,20 @@ TYPING_SUMMARY_ID = 5
 ADMIN_PANEL = set()
 user_states = {}
 
+async def reminder_task(app):
+    while True:
+        now = datetime.now()
+        for slot, hour in TIME_REMINDERS.items():
+            if now.hour == hour and now.minute == 0:
+                for user_id in os.listdir(DATA_FOLDER):
+                    file_path = os.path.join(DATA_FOLDER, user_id)
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    if today not in data["moods"] or slot not in data["moods"].get(today, {}):
+                        await app.bot.send_message(int(user_id), f"⌛️ وقتشه حالت رو ثبت کنی - تایم: {slot}")
+        await asyncio.sleep(60)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if not os.path.exists(os.path.join(DATA_FOLDER, f"{user_id}.json")):
