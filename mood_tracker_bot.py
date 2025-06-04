@@ -44,14 +44,14 @@ broadcast_targets = []
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     filepath = os.path.join(DATA_FOLDER, f"{user_id}.json")
-    now = datetime.now()
     if not os.path.exists(filepath):
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump({"joined": now.isoformat(), "moods": {}}, f)
+            json.dump({"joined": datetime.now().isoformat(), "moods": {}}, f)
     else:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         joined = datetime.fromisoformat(data.get("joined"))
+        now = datetime.now()
         missing_days = (now.date() - joined.date()).days + 1
         for i in range(missing_days):
             day = (now - timedelta(days=i)).date().isoformat()
@@ -143,7 +143,7 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def restart_bot():
     logging.warning("⏱ در حال ری‌استارت ربات پس از خطای Timeout...")
     time.sleep(5)
-    os.execv(__file__, ['python'] + [__file__])
+    return
 
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
@@ -163,12 +163,14 @@ if __name__ == "__main__":
             app = ApplicationBuilder().token(TOKEN).read_timeout(10).connect_timeout(10).build()
             app.add_handler(CommandHandler("start", start))
             app.add_handler(CommandHandler("admin", admin))
-            app.add_handler(CommandHandler("allow", lambda u, c: None))
+            app.add_handler(CommandHandler("allow", lambda u, c: None))  # placeholder
             app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
             app.run_polling()
         except (TimedOut, NetworkError) as e:
             logging.error(f"❌ خطا در اتصال: {e}")
             restart_bot()
+            continue
         except Exception as e:
             logging.exception(f"🚨 خطای ناشناخته: {e}")
             time.sleep(5)
+            continue
