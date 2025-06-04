@@ -31,6 +31,8 @@ WAITING_FOR_PASSWORD = 2
 TYPING_BROADCAST = 3
 TYPING_EXPORT_ID = 4
 TYPING_SUMMARY_ID = 5
+TYPING_PRIVATE_IDS = 6
+TYPING_PRIVATE_MESSAGE = 7
 
 ADMIN_PANEL = set()
 user_states = {}
@@ -71,7 +73,7 @@ async def allow(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗⃣ دستور نادرست. استفاده صحیح:\n/allow user_id")
 
 async def show_admin_menu(update: Update):
-    keyboard = [["📄 لیست کاربران", "📢 پیام همگانی"], ["🧾 خلاصه کاربر", "🗂 خروجی کاربر"], ["❌ خروج از پنل"]]
+    keyboard = [["📄 لیست کاربران", "📢 پیام همگانی"], ["🧾 خلاصه کاربر", "🗂 خروجی کاربر"], ["📬 پیام به کاربر", "❌ خروج از پنل"]]
     await update.message.reply_text("🎛 پنل ادمین فعال شد.", reply_markup=ReplyKeyboardMarkup(keyboard + reply_keyboard, resize_keyboard=True))
 
 async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,15 +105,25 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states[user_id] = TYPING_SUMMARY_ID
             await update.message.reply_text("🔎 لطفاً آیدی کاربر را برای خلاصه آماری وارد کنید:")
             return
+        elif text == "📬 پیام به کاربر":
+            user_states[user_id] = TYPING_PRIVATE_IDS
+            await update.message.reply_text("👤 آیدی یا آیدی‌های کاربران را وارد کن (با کاما جدا کن):")
+            return
         elif text == "❌ خروج از پنل":
             ADMIN_PANEL.remove(user_id)
             await update.message.reply_text("🛑 از حالت ادمین خارج شدید.", reply_markup=markup)
             return
         elif state == TYPING_BROADCAST:
             user_states.pop(user_id)
+            success = 0
+            fail = 0
             for uid in os.listdir(DATA_FOLDER):
-                await context.bot.send_message(int(uid), f"📢 پیام از ادمین:\n{text}")
-            await update.message.reply_text("✅ پیام برای همه ارسال شد.")
+                try:
+                    await context.bot.send_message(int(uid), f"📢 پیام از ادمین:\n{text}")
+                    success += 1
+                except:
+                    fail += 1
+            await update.message.reply_text(f"✅ پیام برای {success} نفر ارسال شد.\n❌ شکست‌خورده: {fail}")
             return
         elif state == TYPING_EXPORT_ID:
             user_states.pop(user_id)
@@ -137,6 +149,23 @@ async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 all_scores.extend([int(s) for s in day.values()])
             avg = sum(all_scores)/len(all_scores) if all_scores else 0
             await update.message.reply_text(f"📊 میانگین نمره: {avg:.2f}\nروزهای فعال: {len(data['moods'])}\nآخرین روز: {max(data['moods']) if data['moods'] else '---'}")
+            return
+        elif state == TYPING_PRIVATE_IDS:
+            user_states[user_id] = (TYPING_PRIVATE_MESSAGE, text.split(","))
+            await update.message.reply_text("📝 حالا متن پیامی که می‌خوای بفرستی رو بنویس:")
+            return
+        elif isinstance(state, tuple) and state[0] == TYPING_PRIVATE_MESSAGE:
+            ids = [i.strip() for i in state[1]]
+            user_states.pop(user_id)
+            success = 0
+            fail = 0
+            for uid in ids:
+                try:
+                    await context.bot.send_message(int(uid), f"📬 پیام اختصاصی از ادمین:\n{text}")
+                    success += 1
+                except:
+                    fail += 1
+            await update.message.reply_text(f"✅ پیام برای {success} نفر ارسال شد.\n❌ شکست‌خورده: {fail}")
             return
 
     if text == "🧠 خالی کردن ذهن":
