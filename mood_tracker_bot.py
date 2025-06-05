@@ -241,7 +241,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all))
 
     try:
-        await app.run_polling()
+        await app.run_polling(close_loop=False)  # ← همین خط کل مشکل رو حل می‌کنه
     except (TimedOut, NetworkError) as e:
         logging.error(f"❌ خطا در اتصال: {e}")
         restart_bot()
@@ -249,6 +249,7 @@ async def main():
         logging.exception(f"🚨 خطای ناشناخته: {e}")
         time.sleep(5)
         restart_bot()
+
 
 if __name__ == "__main__":
     import asyncio
